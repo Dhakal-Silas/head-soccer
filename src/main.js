@@ -99,6 +99,7 @@ function animate() {
     // Dampen ball velocity
     ballVel.multiplyScalar(0.98);
 
+    //render
     renderer.render(scene, camera);
 }
 
