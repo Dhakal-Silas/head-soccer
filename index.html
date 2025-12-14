@@ -1,13 +1,61 @@
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Head Soccer</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Head Soccer</title>
     <style>
-      body { margin: 0; }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            text-align: center;
+        }
+        #score {
+            margin-top: 10px;
+            font-size: 32px;
+        }
+        #timer {
+            margin-top: 5px;
+            font-size: 28px;
+            color: #ffff00;
+        }
+        #gameover {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.9);
+            text-align: center;
+            display: none;
+            background: rgba(0,0,0,0.7);
+            padding: 40px;
+            border-radius: 20px;
+        }
     </style>
-  </head>
-  <body>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+</head>
+<body>
+    <div id="info">
+        <div>Green (A/D move, W jump, J high kick, K low kick) vs Red (Arrows move/jump, ' high kick, \ low kick)</div>
+        <div id="score">0 - 0</div>
+        <div id="timer">2:00</div>
+    </div>
+    <div id="gameover"></div>
+    <script type="module" src="src/main.js"></script>
+</body>
 </html>
