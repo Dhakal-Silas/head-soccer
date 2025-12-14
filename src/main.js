@@ -9,7 +9,7 @@ document.body.appendChild(renderer.domElement);
 
 // Floor
 const floorGeo = new THREE.PlaneGeometry(50, 20);
-const floorMat = new THREE.MeshStandardMaterial({ color: 0x555555, side: THREE.DoubleSide });
+const floorMat = new THREE.MeshStandardMaterial({ color: '#6e6340', side: THREE.DoubleSide });
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = Math.PI / 2;
 floor.position.y = 0;
