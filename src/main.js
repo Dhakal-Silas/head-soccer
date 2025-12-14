@@ -8,7 +8,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Floor
-const floorGeo = new THREE.PlaneGeometry(50, 1);
+const floorGeo = new THREE.PlaneGeometry(50, 20);
 const floorMat = new THREE.MeshStandardMaterial({ color: 0x555555, side: THREE.DoubleSide });
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = Math.PI / 2;
@@ -79,7 +79,7 @@ document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
 // Movement & jump variables
 const speed = 0.2;
-const jumpVelocity = 0.5;
+const jumpVelocity = 0.6;
 const gravity = -0.025;
 let hero1VelY = 0, hero2VelY = 0;
 let hero1CanJump = true, hero2CanJump = true;
@@ -200,12 +200,12 @@ function kickBall(hero, isHighShot) {
     const dy = ball.position.y - hero.position.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist < 2) {
+    if (dist < 3) {
         const direction = hero === hero1 ? 1 : -1;
         // High shot: more speed and much more height
         // Low shot: moderate speed and lower height
-        ballVelX = direction * (isHighShot ? 0.8 : 0.6);
-        ballVelY = isHighShot ? 0.7 : 0.2;
+        ballVelX = direction * (isHighShot ? 1.2 : 1);
+        ballVelY = isHighShot ? 0.8 : 0.3;
     }
 }
 
