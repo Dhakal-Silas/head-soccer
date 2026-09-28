@@ -1,61 +1,153 @@
-<!-- index.html -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2D Head Soccer</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: Arial, sans-serif;
-        }
-        #info {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-size: 20px;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            text-align: center;
-        }
-        #score {
-            margin-top: 10px;
-            font-size: 32px;
-        }
-        #timer {
-            margin-top: 5px;
-            font-size: 28px;
-            color: #ffff00;
-        }
-        #gameover {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 48px;
-            font-weight: bold;
-            text-shadow: 3px 3px 6px rgba(0,0,0,0.9);
-            text-align: center;
-            display: none;
-            background: rgba(0,0,0,0.7);
-            padding: 40px;
-            border-radius: 20px;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Head Soccer 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rubik:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
-    <div id="info">
-        <div>Green (A/D move, W jump, J high kick, K low kick) vs Red (Arrows move/jump, ' high kick, \ low kick)</div>
-        <div id="score">0 - 0</div>
-        <div id="timer">2:00</div>
+  <canvas id="game"></canvas>
+
+  <div id="ui">
+    <!-- ================= HUD ================= -->
+    <div id="hud" class="hidden">
+      <div class="hud-side left">
+        <img class="hud-portrait" id="hud-portrait-0" alt="" />
+        <div class="hud-meta">
+          <div class="hud-name" id="hud-name-0">P1</div>
+          <div class="hud-tag" id="hud-tag-0">Player 1</div>
+        </div>
+      </div>
+      <div class="hud-center">
+        <div class="hud-score"><span id="hud-score-0">0</span><span class="dash">–</span><span id="hud-score-1">0</span></div>
+        <div class="hud-timer" id="hud-timer">2:00</div>
+        <div class="hud-rule" id="hud-rule">Most goals wins</div>
+      </div>
+      <div class="hud-side right">
+        <div class="hud-meta">
+          <div class="hud-name" id="hud-name-1">P2</div>
+          <div class="hud-tag" id="hud-tag-1">CPU</div>
+        </div>
+        <img class="hud-portrait" id="hud-portrait-1" alt="" />
+      </div>
+      <button class="icon-btn hud-pause" id="btn-pause" title="Pause (Esc)">II</button>
     </div>
-    <div id="gameover"></div>
-    <script type="module" src="src/main.js"></script>
+
+    <div id="banner" class="hidden">
+      <div class="banner-main" id="banner-main"></div>
+      <div class="banner-sub" id="banner-sub"></div>
+    </div>
+
+    <div id="hint" class="hidden">
+      <span><b>P1</b> A / D move · W jump · S kick</span>
+      <span id="hint-p2"><b>P2</b> ← / → move · ↑ jump · ↓ kick</span>
+    </div>
+
+    <!-- ================= TITLE ================= -->
+    <section id="screen-title" class="screen">
+      <div class="title-wrap">
+        <div class="logo">
+          <span class="logo-top">HEAD</span>
+          <span class="logo-main">SOCCER</span>
+          <span class="logo-3d">3D</span>
+        </div>
+        <p class="tagline">Big heads. Bigger goals.</p>
+        <div class="menu">
+          <button class="btn primary big" data-action="quick">Quick Match</button>
+          <button class="btn big" data-action="tournament">Tournament</button>
+          <button class="btn ghost" data-action="help">How to play</button>
+        </div>
+        <div class="footer-row">
+          <button class="icon-btn" id="btn-mute" title="Toggle sound">🔊</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SETUP ================= -->
+    <section id="screen-setup" class="screen hidden">
+      <div class="panel">
+        <h1 id="setup-title">Match Setup</h1>
+        <div class="setup-grid" id="setup-body"></div>
+        <div class="row between">
+          <button class="btn ghost" data-action="back">← Back</button>
+          <button class="btn primary" data-action="setupNext">Choose players →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SELECT ================= -->
+    <section id="screen-select" class="screen hidden">
+      <div class="panel wide">
+        <h1>Choose your player</h1>
+        <div class="select-grid" id="select-body"></div>
+        <div class="row between">
+          <button class="btn ghost" data-action="back">← Back</button>
+          <div class="row gap">
+            <button class="btn" data-action="randomAll">🎲 Random</button>
+            <button class="btn primary big" data-action="selectStart" id="btn-select-start">Kick off!</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= BRACKET ================= -->
+    <section id="screen-bracket" class="screen hidden">
+      <div class="panel wide">
+        <h1>Tournament</h1>
+        <div class="bracket" id="bracket-body"></div>
+        <div class="row between">
+          <button class="btn ghost" data-action="quitTournament">Quit tournament</button>
+          <div id="bracket-status" class="status"></div>
+          <button class="btn primary big" data-action="bracketNext" id="btn-bracket-next">Play match</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PAUSE ================= -->
+    <section id="screen-pause" class="screen overlay hidden">
+      <div class="panel small center">
+        <h1>Paused</h1>
+        <div class="menu">
+          <button class="btn primary big" data-action="resume">Resume</button>
+          <button class="btn" data-action="restart">Restart match</button>
+          <button class="btn ghost" data-action="quit">Quit to menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= RESULT ================= -->
+    <section id="screen-result" class="screen overlay hidden">
+      <div class="panel result center" id="result-body"></div>
+    </section>
+
+    <!-- ================= HELP ================= -->
+    <section id="screen-help" class="screen overlay hidden">
+      <div class="panel center">
+        <h1>How to play</h1>
+        <div class="help-grid">
+          <div>
+            <h3>Player 1</h3>
+            <p><kbd>A</kbd> <kbd>D</kbd> move</p>
+            <p><kbd>W</kbd> jump</p>
+            <p><kbd>S</kbd> / <kbd>F</kbd> / <kbd>Space</kbd> kick</p>
+          </div>
+          <div>
+            <h3>Player 2</h3>
+            <p><kbd>←</kbd> <kbd>→</kbd> move</p>
+            <p><kbd>↑</kbd> jump</p>
+            <p><kbd>↓</kbd> / <kbd>/</kbd> / <kbd>Enter</kbd> kick</p>
+          </div>
+        </div>
+        <p class="muted">Head the ball, jump on your rival, kick from the ground or in the air. <kbd>Esc</kbd> pauses. Each star has different speed, jump, power, head size and ball control.</p>
+        <button class="btn primary" data-action="closeHelp">Got it</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>

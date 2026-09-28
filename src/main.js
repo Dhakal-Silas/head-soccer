@@ -1,355 +1,466 @@
-// main.js
-import * as THREE from 'three';
+// Controller: wires input, simulation, AI, renderer, audio and UI together.
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+import { ROSTER, DEFAULT_SETTINGS, PHYS, DIFFICULTIES } from './config.js';
+import { Input } from './input.js';
+import { AudioSys } from './audio.js';
+import { Match } from './physics.js';
+import { CpuBrain } from './ai.js';
+import { GameRenderer, PreviewRenderer } from './render.js';
+import { UI } from './ui.js';
+import { Tournament, ROUND_NAMES } from './tournament.js';
 
-// Floor
-const floorGeo = new THREE.PlaneGeometry(50, 20);
-const floorMat = new THREE.MeshStandardMaterial({ color: '#6e6340', side: THREE.DoubleSide });
-const floor = new THREE.Mesh(floorGeo, floorMat);
-floor.rotation.x = Math.PI / 2;
-floor.position.y = 0;
-scene.add(floor);
+const canvas = document.getElementById('game');
+const audio = new AudioSys();
+const input = new Input();
+const ui = new UI(audio);
+const renderer = new GameRenderer(canvas);
+const previews = [null, null];
 
-// Goal posts (height matches max jump)
-const goalHeight = 6.5;
-const goalPostMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+const app = {
+  settings: { ...DEFAULT_SETTINGS },
+  flow: 'quick',            // 'quick' | 'tournament'
+  selection: [0, 1],
+  match: null,
+  brains: [null, null],
+  humans: [false, false],
+  demo: true,
+  paused: false,
+  lastParams: null,
+  tournament: null,
+  currentTie: null,
+  tieSlots: [null, null],
+  moods: [{ override: null, until: 0 }, { override: null, until: 0 }],
+  resultTimer: -1,
+  resultShown: false,
+  lastCount: null,
+  accumulator: 0,
+  last: performance.now(),
+  clock: 0,
+};
 
-// Left goal
-const leftGoalPost1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, goalHeight, 0.3), goalPostMat);
-leftGoalPost1.position.set(-23, goalHeight / 2, 0);
-scene.add(leftGoalPost1);
+const diffName = () => DIFFICULTIES[app.settings.difficulty - 1].name;
 
-const leftGoalPost2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, goalHeight, 0.3), goalPostMat);
-leftGoalPost2.position.set(-23, goalHeight / 2, 6);
-scene.add(leftGoalPost2);
+// --------------------------------------------------------------- match setup
+function startDemo() {
+  const a = Math.floor(Math.random() * ROSTER.length);
+  let b = Math.floor(Math.random() * (ROSTER.length - 1));
+  if (b >= a) b++;
+  const rosters = [ROSTER[a], ROSTER[b]];
+  app.match = new Match({ mode: 'goals', target: 9999, minutes: 0, goldenGoal: false }, rosters);
+  app.match.countdownLen = 0.5;
+  app.brains = [new CpuBrain(4, 0), new CpuBrain(4, 1)];
+  app.humans = [false, false];
+  app.demo = true;
+  app.paused = false;
+  app.resultTimer = -1;
+  app.resultShown = false;
+  renderer.setPlayers(rosters);
+  renderer.menuOrbit = true;
+  ui.setHud(false);
+  ui.setHint(false);
+  ui.hideBanner();
+  resetMoods();
+}
 
-const leftGoalBar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 6.3), goalPostMat);
-leftGoalBar.position.set(-23, goalHeight, 3);
-scene.add(leftGoalBar);
+function startMatch(params) {
+  const { rosters, humans, settings, tags } = params;
+  app.lastParams = params;
+  app.match = new Match(settings, rosters);
+  app.brains = [0, 1].map((i) => (humans[i] ? null : new CpuBrain(settings.difficulty, i)));
+  app.humans = humans;
+  app.demo = false;
+  app.paused = false;
+  app.resultTimer = -1;
+  app.resultShown = false;
+  app.lastCount = null;
+  app.accumulator = 0;
+  input.reset();
+  renderer.setPlayers(rosters);
+  renderer.menuOrbit = false;
+  ui.hideScreens();
+  ui.setupHud(rosters, tags);
+  ui.setHud(true);
+  ui.setHint(true, humans[1]);
+  ui.hideBanner();
+  audio.unlock();
+  audio.resume();
+  audio.setCrowd(0.5);
+  resetMoods();
+}
 
-// Right goal
-const rightGoalPost1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, goalHeight, 0.3), goalPostMat);
-rightGoalPost1.position.set(23, goalHeight / 2, 0);
-scene.add(rightGoalPost1);
+function goToTitle() {
+  startDemo();
+  ui.show('title');
+  audio.setCrowd(0.15);
+}
 
-const rightGoalPost2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, goalHeight, 0.3), goalPostMat);
-rightGoalPost2.position.set(23, goalHeight / 2, 6);
-scene.add(rightGoalPost2);
+// -------------------------------------------------------------------- moods
+function resetMoods() {
+  for (const m of app.moods) { m.override = null; m.until = 0; }
+  for (const av of renderer.avatars) if (av) { av.setCelebrate('none'); av.setExpression('neutral'); }
+}
 
-const rightGoalBar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 6.3), goalPostMat);
-rightGoalBar.position.set(23, goalHeight, 3);
-scene.add(rightGoalBar);
+function setMood(i, expr, seconds) {
+  app.moods[i].override = expr;
+  app.moods[i].until = app.clock + seconds;
+}
 
-// Light
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(10, 20, 10);
-scene.add(light);
-const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
-scene.add(ambientLight);
+function baseMood(match, i) {
+  const diff = match.score[i] - match.score[1 - i];
+  if (match.phase === 'ended') return match.winner === i ? 'happy' : match.winner === -1 ? 'neutral' : 'sad';
+  if (match.phase === 'countdown') return diff <= -2 ? 'angry' : 'neutral';
+  if (diff >= 2) return 'smug';
+  if (diff <= -2) return 'angry';
+  return 'focus';
+}
 
-// Heroes
-const hero1Geo = new THREE.BoxGeometry(1.5, 2.5, 1);
-const hero1Mat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-const hero1 = new THREE.Mesh(hero1Geo, hero1Mat);
-hero1.position.set(-10, 1.25, 3);
-scene.add(hero1);
+function updateMoods() {
+  const m = app.match;
+  for (let i = 0; i < 2; i++) {
+    const av = renderer.avatars[i];
+    if (!av) continue;
+    const mood = app.moods[i];
+    if (mood.override && app.clock > mood.until) mood.override = null;
+    av.setExpression(mood.override || baseMood(m, i));
+  }
+}
 
-const hero2Geo = new THREE.BoxGeometry(1.5, 2.5, 1);
-const hero2Mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-const hero2 = new THREE.Mesh(hero2Geo, hero2Mat);
-hero2.position.set(10, 1.25, 3);
-scene.add(hero2);
-
-// Ball
-const ballGeo = new THREE.SphereGeometry(1, 32, 32);
-const ballMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
-const ball = new THREE.Mesh(ballGeo, ballMat);
-ball.position.set(0, 1, 3);
-scene.add(ball);
-
-// Keyboard input
-const keys = {};
-document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-// Movement & jump variables
-const speed = 0.2;
-const jumpVelocity = 0.6;
-const gravity = -0.025;
-let hero1VelY = 0, hero2VelY = 0;
-let hero1CanJump = true, hero2CanJump = true;
-let ballVelX = -0.15, ballVelY = 0; // Ball starts moving towards hero1
-
-// Position camera for 2D side view
-camera.position.set(0, 8, 25);
-camera.lookAt(0, 3, 3);
-
-let score1 = 0, score2 = 0;
-let lastScorer = 0; // 1 for hero1 scored, 2 for hero2 scored
-let gameOver = false;
-
-const scoreEl = document.getElementById('score');
-const timerEl = document.getElementById('timer');
-const gameoverEl = document.getElementById('gameover');
-
-// Timer (2 minutes = 120 seconds)
-let timeLeft = 120;
-const timerInterval = setInterval(() => {
-    if (!gameOver) {
-        timeLeft--;
-        const minutes = Math.floor(timeLeft / 60);
-        const seconds = timeLeft % 60;
-        timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-        if (timeLeft <= 0) {
-            endGame();
+// ------------------------------------------------------------------- events
+function handleEvents() {
+  const m = app.match;
+  const live = !app.demo;
+  for (const ev of m.drainEvents()) {
+    renderer.onEvent(ev);
+    switch (ev.type) {
+      case 'whistle':
+        if (live) { audio.whistle(); ui.banner('GO!', '', '', 650); }
+        break;
+      case 'goal': {
+        const s = ev.scorer, c = 1 - s;
+        const name = m.players[s].roster.name;
+        setMood(s, 'happy', 3.5);
+        const diff = m.score[c] - m.score[s];
+        setMood(c, diff <= -3 ? 'angry' : 'sad', 3.5);
+        renderer.avatars[s].setCelebrate('win');
+        renderer.avatars[c].setCelebrate('lose');
+        if (live) {
+          audio.goal();
+          const sub = m.overtime ? 'Golden goal!' : `${name} scores`;
+          ui.banner('GOAL!', sub, 'goal', 2200);
         }
-    }
-}, 1000);
-
-function endGame() {
-    gameOver = true;
-    clearInterval(timerInterval);
-
-    let winner = '';
-    if (score1 > score2) {
-        winner = 'Green Player Wins!';
-    } else if (score2 > score1) {
-        winner = 'Red Player Wins!';
-    } else {
-        winner = "It's a Draw!";
-    }
-
-    gameoverEl.innerHTML = `
-        <div>GAME OVER</div>
-        <div style="margin-top: 20px;">${winner}</div>
-        <div style="margin-top: 20px; font-size: 36px;">Final Score: ${score1} - ${score2}</div>
-    `;
-    gameoverEl.style.display = 'block';
-}
-
-function updateScore() {
-    scoreEl.textContent = `${score1} - ${score2}`;
-}
-
-function checkGoal() {
-    // Check left goal (hero2 scores) - ball must be below goalpost height
-    if (ball.position.x < -22 && ball.position.y < goalHeight && ball.position.z > 0 && ball.position.z < 6) {
-        score2++;
-        lastScorer = 2;
-        updateScore();
-        resetPlayers();
-        resetBall();
-    }
-    // Check right goal (hero1 scores) - ball must be below goalpost height
-    if (ball.position.x > 22 && ball.position.y < goalHeight && ball.position.z > 0 && ball.position.z < 6) {
-        score1++;
-        lastScorer = 1;
-        updateScore();
-        resetPlayers();
-        resetBall();
-    }
-
-    // Ball hits the back of left goal post (above goal height) - bounce back
-    if (ball.position.x < -22 && ball.position.y >= goalHeight) {
-        ball.position.x = -22;
-        ballVelX = -ballVelX * 0.7; // Reverse and dampen
-    }
-
-    // Ball hits the back of right goal post (above goal height) - bounce back
-    if (ball.position.x > 22 && ball.position.y >= goalHeight) {
-        ball.position.x = 22;
-        ballVelX = -ballVelX * 0.7; // Reverse and dampen
-    }
-}
-
-function resetPlayers() {
-    // Reset players to original positions
-    hero1.position.set(-10, 1.25, 3);
-    hero2.position.set(10, 1.25, 3);
-    hero1VelY = 0;
-    hero2VelY = 0;
-    hero1CanJump = true;
-    hero2CanJump = true;
-}
-
-function resetBall() {
-    // Reset ball to center
-    ball.position.set(0, 1, 3);
-
-    // Ball moves towards the player who should receive it
-    // First goal or hero1 conceded - ball moves to hero1
-    if (lastScorer === 0 || lastScorer === 2) {
-        ballVelX = -0.15;
-        ballVelY = 0;
-    }
-    // Hero2 conceded - ball moves to hero2
-    else {
-        ballVelX = 0.15;
-        ballVelY = 0;
-    }
-}
-
-function kickBall(hero, isHighShot) {
-    const dx = ball.position.x - hero.position.x;
-    const dy = ball.position.y - hero.position.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < 3) {
-        const direction = hero === hero1 ? 1 : -1;
-        // High shot: more speed and much more height
-        // Low shot: moderate speed and lower height
-        ballVelX = direction * (isHighShot ? 1.2 : 1);
-        ballVelY = isHighShot ? 0.8 : 0.3;
-    }
-}
-
-function animate() {
-    requestAnimationFrame(animate);
-
-    if (gameOver) {
-        renderer.render(scene, camera);
-        return;
-    }
-
-    // Hero1 - A/D for left/right, W for jump, J high kick, K low kick
-    if (keys['a']) hero1.position.x -= speed;
-    if (keys['d']) hero1.position.x += speed;
-    if (keys['w'] && hero1CanJump) {
-        hero1VelY = jumpVelocity;
-        hero1CanJump = false;
-    }
-    if (keys['j']) {
-        kickBall(hero1, true);
-        keys['j'] = false;
-    }
-    if (keys['k']) {
-        kickBall(hero1, false);
-        keys['k'] = false;
-    }
-
-    hero1VelY += gravity;
-    hero1.position.y += hero1VelY;
-    if (hero1.position.y <= 1.25) {
-        hero1.position.y = 1.25;
-        hero1VelY = 0;
-        hero1CanJump = true;
-    }
-
-    // Keep hero1 in bounds (can go anywhere)
-    hero1.position.x = Math.max(-22, Math.min(22, hero1.position.x));
-
-    // Hero2 - Arrow Left/Right, Arrow Up for jump, ' high kick, \ low kick
-    if (keys['arrowleft']) hero2.position.x -= speed;
-    if (keys['arrowright']) hero2.position.x += speed;
-    if (keys['arrowup'] && hero2CanJump) {
-        hero2VelY = jumpVelocity;
-        hero2CanJump = false;
-    }
-    if (keys["'"]) {
-        kickBall(hero2, true);
-        keys["'"] = false;
-    }
-    if (keys['\\']) {
-        kickBall(hero2, false);
-        keys['\\'] = false;
-    }
-
-    hero2VelY += gravity;
-    hero2.position.y += hero2VelY;
-    if (hero2.position.y <= 1.25) {
-        hero2.position.y = 1.25;
-        hero2VelY = 0;
-        hero2CanJump = true;
-    }
-
-    // Keep hero2 in bounds (can go anywhere)
-    hero2.position.x = Math.max(-22, Math.min(22, hero2.position.x));
-
-    // Ball physics - collisions with heroes (based on contact point)
-    function collide(hero) {
-        const dx = ball.position.x - hero.position.x;
-        const dy = ball.position.y - hero.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < 1.5) {
-            // Calculate angle based on where ball hits the hero
-            const angle = Math.atan2(dy, dx);
-
-            // Power depends on relative position
-            const power = 0.35;
-
-            // Horizontal velocity based on which side of hero was hit
-            ballVelX = Math.cos(angle) * power;
-
-            // Vertical velocity based on height of contact
-            // If ball hits top of hero (dy > 0.5), it goes up more
-            // If ball hits side/bottom, it gets less vertical velocity
-            if (dy > 0.5) {
-                // Hit from top - ball bounces up
-                ballVelY = Math.abs(Math.sin(angle)) * power * 1.2;
-            } else if (dy < -0.5) {
-                // Hit from bottom - ball goes down then up (natural bounce)
-                ballVelY = Math.sin(angle) * power * 0.8;
-            } else {
-                // Hit from side - medium vertical velocity
-                ballVelY = Math.sin(angle) * power;
-            }
+        break;
+      }
+      case 'reset':
+        renderer.avatars[0].setCelebrate('none');
+        renderer.avatars[1].setCelebrate('none');
+        if (live) ui.banner('GET READY', '', '', 1200);
+        break;
+      case 'overtime':
+        if (live) { audio.whistle(); ui.banner('GOLDEN GOAL', 'next goal wins', 'golden', 2600); }
+        setMood(0, 'shock', 1.5); setMood(1, 'shock', 1.5);
+        break;
+      case 'end': {
+        if (ev.winner >= 0) {
+          renderer.avatars[ev.winner].setCelebrate('win');
+          renderer.avatars[1 - ev.winner].setCelebrate('lose');
         }
+        if (live) {
+          audio.whistle(true);
+          const n = ev.winner >= 0 ? m.players[ev.winner].roster.name : '';
+          ui.banner(ev.winner >= 0 ? 'FULL TIME' : 'DRAW', ev.winner >= 0 ? `${n} wins` : 'honours even', ev.winner >= 0 ? 'goal' : '', 2600);
+          app.resultTimer = 2.8;
+          const humanWon = ev.winner >= 0 && app.humans[ev.winner];
+          const humanLost = ev.winner >= 0 && !app.humans[ev.winner] && app.humans.some(Boolean);
+          if (humanWon || (app.humans[0] && app.humans[1])) audio.fanfare(); else if (humanLost) audio.lose();
+        }
+        break;
+      }
+      case 'kick':
+        if (live) audio.kick(Math.min(1, ev.power));
+        break;
+      case 'bounce':
+        if (live) audio.bounce(ev.strength);
+        break;
+      case 'post':
+        if (live) audio.bounce(1);
+        setMood(0, 'shock', 0.8); setMood(1, 'shock', 0.8);
+        break;
+      case 'head':
+        if (live) audio.head(ev.strength);
+        if (ev.strength > 0.6) setMood(ev.slot, 'shock', 0.5);
+        break;
+      case 'jump':
+        if (live && app.humans[ev.slot]) audio.jump();
+        break;
+      case 'drop':
+        if (live) { audio.whistle(); ui.banner('DROP BALL', 'ball was stuck', '', 1400); }
+        break;
     }
-
-    collide(hero1);
-    collide(hero2);
-
-    // Apply gravity to ball
-    ballVelY += gravity;
-
-    // Update ball position
-    ball.position.x += ballVelX;
-    ball.position.y += ballVelY;
-
-    // Ball collision with floor
-    if (ball.position.y <= 0.7) {
-        ball.position.y = 0.7;
-        // Bounce with damping, but preserve horizontal trajectory
-        ballVelY = -ballVelY * 0.65;
-    }
-
-    // Ball collision with ceiling (if it goes too high)
-    if (ball.position.y > 10) {
-        ball.position.y = 10;
-        // Reverse vertical velocity to make it come down
-        ballVelY = -Math.abs(ballVelY) * 0.7;
-    }
-
-    // Ball collision with walls
-    if (ball.position.x < -24 || ball.position.x > 24) {
-        ballVelX = -ballVelX * 0.8;
-        ball.position.x = ball.position.x < 0 ? -24 : 24;
-    }
-
-    // Keep ball in 2D plane
-    ball.position.z = 3;
-
-    // Dampen ball velocity
-    ballVelX *= 0.99;
-    ballVelY *= 0.99;
-
-    checkGoal();
-
-    renderer.render(scene, camera);
+  }
 }
 
-animate();
+function updateCountdown() {
+  const m = app.match;
+  if (app.demo) return;
+  if (m.phase !== 'countdown' || m.countdownLen < 3) { app.lastCount = null; return; }
+  const n = Math.ceil(3 - m.phaseT);
+  if (n !== app.lastCount && n >= 1) {
+    app.lastCount = n;
+    ui.banner(String(n), n === 3 ? `${m.players[0].roster.name} vs ${m.players[1].roster.name}` : '', '', 900);
+    audio.countdown(false);
+  }
+}
 
-// Handle window resize
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+// ------------------------------------------------------------------- result
+function showResult() {
+  app.resultShown = true;
+  const m = app.match;
+  const w = m.winner;
+  const names = m.players.map((p) => p.roster.name);
+  let verdict, cls;
+  const twoHumans = app.humans[0] && app.humans[1];
+  if (w === -1) { verdict = 'DRAW'; cls = 'draw'; }
+  else if (twoHumans) { verdict = `PLAYER ${w + 1} WINS`; cls = 'win'; }
+  else if (app.humans[w]) { verdict = 'YOU WIN!'; cls = 'win'; }
+  else { verdict = 'YOU LOSE'; cls = 'lose'; }
+
+  let sub = `${names[0]} vs ${names[1]}`;
+  let buttons;
+  if (app.flow === 'tournament') {
+    sub = `${ROUND_NAMES[app.currentTie.round]} · ${sub}`;
+    buttons = [{ label: 'Continue', action: 'tournamentContinue', cls: 'primary big' }];
+  } else {
+    buttons = [
+      { label: 'Rematch', action: 'rematch', cls: 'primary big' },
+      { label: 'Change players', action: 'reselect' },
+      { label: 'Main menu', action: 'menu', cls: 'ghost' },
+    ];
+  }
+  ui.renderResult({ verdict, verdictCls: cls, sub, rosters: m.players.map((p) => p.roster), score: m.score, winner: w, stats: m.stats, buttons });
+  ui.show('result');
+}
+
+// --------------------------------------------------------------- selection
+function selectSlots() {
+  const s = app.settings;
+  const slot0 = { who: 'Player 1', cls: 'p1', keys: 'A / D · W / S to browse', index: app.selection[0] };
+  let slot1 = null;
+  if (app.flow === 'quick') {
+    slot1 = s.p2Human
+      ? { who: 'Player 2', cls: 'p2', keys: '← → ↑ ↓ to browse', index: app.selection[1] }
+      : { who: `CPU · ${diffName()}`, cls: 'p2', keys: 'Pick the opponent', index: app.selection[1] };
+  } else if (s.p2Human) {
+    slot1 = { who: 'Player 2', cls: 'p2', keys: '← → ↑ ↓ to browse', index: app.selection[1] };
+  }
+  return [slot0, slot1];
+}
+
+function openSelect() {
+  const slots = selectSlots();
+  ui.renderSelect(slots, (si, ri) => {
+    app.selection[si] = ri;
+    ui.updateSlot(si, ri);
+    if (previews[si]) previews[si].setPlayer(ROSTER[ri]);
+  }, app.flow === 'tournament' ? 'Enter tournament' : 'Kick off!');
+  for (let i = 0; i < 2; i++) {
+    const cv = ui.previewCanvases[i];
+    if (!cv || !slots[i]) continue;
+    if (!previews[i]) previews[i] = new PreviewRenderer(cv);
+    previews[i].setPlayer(ROSTER[app.selection[i]]);
+  }
+  ui.show('select');
+}
+
+function moveSelection(si, delta) {
+  if (ui.current !== 'select') return;
+  const slots = selectSlots();
+  if (!slots[si]) return;
+  const n = ROSTER.length;
+  const ri = ((app.selection[si] + delta) % n + n) % n;
+  app.selection[si] = ri;
+  ui.updateSlot(si, ri);
+  if (previews[si]) previews[si].setPlayer(ROSTER[ri]);
+  audio.click();
+}
+
+function launchFromSelect() {
+  const s = app.settings;
+  if (app.flow === 'quick') {
+    startMatch({
+      rosters: [ROSTER[app.selection[0]], ROSTER[app.selection[1]]],
+      humans: [true, s.p2Human],
+      settings: { ...s },
+      tags: ['Player 1', s.p2Human ? 'Player 2' : `CPU · ${diffName()}`],
+    });
+  } else {
+    const humans = [{ human: 0, roster: ROSTER[app.selection[0]] }];
+    if (s.p2Human) humans.push({ human: 1, roster: ROSTER[app.selection[1]] });
+    app.tournament = new Tournament(humans, ROSTER, { ...s, goldenGoal: true });
+    showBracket();
+  }
+}
+
+// --------------------------------------------------------------- tournament
+function showBracket() {
+  const t = app.tournament;
+  const tie = t.nextHumanMatch();
+  app.currentTie = tie;
+  let status, label;
+  if (tie) {
+    status = `${ROUND_NAMES[tie.round]}: ${tie.a.roster.name} vs ${tie.b.roster.name}`;
+    label = 'Play match';
+  } else if (t.champion) {
+    const humanChamp = t.champion.human >= 0;
+    status = humanChamp ? `Champion: Player ${t.champion.human + 1}!` : `${t.champion.roster.name} lifts the trophy.`;
+    label = 'Back to menu';
+  } else {
+    status = 'You are out of the tournament.';
+    label = 'Simulate the rest';
+  }
+  if (app.demo === false) startDemo();
+  ui.renderBracket(t, tie, status, label);
+  ui.show('bracket');
+}
+
+function playTie(tie) {
+  const s = app.settings;
+  const rosters = [null, null];
+  const humans = [false, false];
+  const slots = [null, null];
+  const [a, b] = [tie.a, tie.b];
+  // humans keep their own controls / side; the CPU takes the remaining slot
+  const slotOf = (e, other) => (e.human >= 0 ? e.human : (other.human >= 0 ? 1 - other.human : null));
+  let sa = slotOf(a, b), sb = slotOf(b, a);
+  if (sa === null && sb === null) { sa = 0; sb = 1; }
+  rosters[sa] = a.roster; rosters[sb] = b.roster;
+  humans[sa] = a.human >= 0; humans[sb] = b.human >= 0;
+  slots[sa] = a; slots[sb] = b;
+  app.tieSlots = slots;
+  const tags = slots.map((e) => (e.human >= 0 ? `Player ${e.human + 1}` : `CPU · ${diffName()}`));
+  startMatch({ rosters, humans, settings: { ...s, goldenGoal: true }, tags });
+}
+
+// ---------------------------------------------------------------- UI wiring
+ui.on('quick', () => { app.flow = 'quick'; ui.renderSetup(app.settings, { tournament: false }); ui.show('setup'); });
+ui.on('tournament', () => { app.flow = 'tournament'; ui.renderSetup(app.settings, { tournament: true }); ui.show('setup'); });
+ui.on('help', () => ui.show('help'));
+ui.on('closeHelp', () => ui.show('title'));
+ui.on('back', () => {
+  if (ui.current === 'setup') ui.show('title');
+  else if (ui.current === 'select') { ui.renderSetup(app.settings, { tournament: app.flow === 'tournament' }); ui.show('setup'); }
 });
+ui.on('setupNext', () => openSelect());
+ui.on('randomAll', () => {
+  const a = Math.floor(Math.random() * ROSTER.length);
+  let b = Math.floor(Math.random() * (ROSTER.length - 1));
+  if (b >= a) b++;
+  app.selection = [a, b];
+  openSelect();
+});
+ui.on('selectStart', () => launchFromSelect());
+ui.on('bracketNext', () => {
+  const t = app.tournament;
+  if (app.currentTie) playTie(app.currentTie);
+  else if (t.champion) goToTitle();
+  else { t.finish(); showBracket(); }
+});
+ui.on('quitTournament', () => goToTitle());
+ui.on('tournamentContinue', () => {
+  const m = app.match;
+  const tie = app.currentTie;
+  const scoreOf = (e) => m.score[app.tieSlots.indexOf(e)];
+  app.tournament.report(tie, scoreOf(tie.a), scoreOf(tie.b));
+  showBracket();
+});
+ui.on('rematch', () => startMatch(app.lastParams));
+ui.on('reselect', () => { startDemo(); openSelect(); });
+ui.on('menu', () => goToTitle());
+ui.on('pause', () => togglePause(true));
+ui.on('resume', () => togglePause(false));
+ui.on('restart', () => startMatch(app.lastParams));
+ui.on('quit', () => goToTitle());
+
+function togglePause(force) {
+  if (app.demo || app.resultShown || !app.match) return;
+  const next = force === undefined ? !app.paused : force;
+  if (next === app.paused) return;
+  app.paused = next;
+  if (next) ui.show('pause'); else { ui.hideScreens(); input.reset(); }
+}
+
+input.onPress((code, e) => {
+  audio.unlock();
+  if (code === 'Escape' || code === 'KeyP') {
+    if (ui.current === 'help') { ui.show('title'); return; }
+    togglePause();
+    return;
+  }
+  if (ui.current === 'select') {
+    if (code === 'KeyA') moveSelection(0, -1);
+    else if (code === 'KeyD') moveSelection(0, 1);
+    else if (code === 'KeyW') moveSelection(0, -5);
+    else if (code === 'KeyS') moveSelection(0, 5);
+    else if (code === 'ArrowLeft') moveSelection(1, -1);
+    else if (code === 'ArrowRight') moveSelection(1, 1);
+    else if (code === 'ArrowUp') moveSelection(1, -5);
+    else if (code === 'ArrowDown') moveSelection(1, 5);
+    else if (code === 'Enter' || code === 'Space') { e.preventDefault(); audio.click(); launchFromSelect(); }
+  } else if (ui.current === 'title' && (code === 'Enter' || code === 'Space')) {
+    ui.emit('quick');
+  } else if (ui.current === 'result' && code === 'Enter') {
+    const first = document.querySelector('#result-body [data-action]');
+    if (first) first.click();
+  }
+});
+
+document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); });
+
+// --------------------------------------------------------------------- loop
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = (now - app.last) / 1000;
+  app.last = now;
+  if (dt > 0.05) dt = 0.05;
+  if (dt < 0) dt = 0;
+
+  const m = app.match;
+  if (m && !app.paused) {
+    app.clock += dt;
+    app.accumulator += dt;
+    let steps = 0;
+    while (app.accumulator >= PHYS.dt && steps < 8) {
+      const commands = [0, 1].map((i) => (app.humans[i] ? input.commandFor(i) : app.brains[i].decide(m, PHYS.dt)));
+      m.step(commands);
+      app.accumulator -= PHYS.dt;
+      steps++;
+    }
+    handleEvents();
+    updateCountdown();
+    updateMoods();
+    if (!app.demo) {
+      ui.updateHud(m);
+      if (app.resultTimer > 0) {
+        app.resultTimer -= dt;
+        if (app.resultTimer <= 0 && !app.resultShown) showResult();
+      }
+    }
+    renderer.update(m, dt);
+  } else if (m) {
+    renderer.update(m, 0);
+  }
+
+  if (ui.current === 'select') {
+    for (const p of previews) if (p) p.render(dt);
+  }
+}
+
+// debugging hook (harmless in production)
+window.__hs3d = { app, ui, renderer, startMatch, ROSTER };
+
+async function boot() {
+  try { await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]); } catch (e) { /* ignore */ }
+  goToTitle();
+  requestAnimationFrame((t) => { app.last = t; frame(t); });
+}
+
+boot();
