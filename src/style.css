@@ -203,6 +203,14 @@ kbd { display: inline-block; min-width: 26px; padding: 3px 7px; border-radius: 6
 .hud-portrait { width: 56px; height: 56px; border-radius: 50%; background: #223; border: 2px solid var(--line); }
 .hud-name { font-family: var(--font-display); font-size: 26px; letter-spacing: 1.5px; line-height: 1; }
 .hud-tag { font-size: 12px; color: var(--muted); }
+.hud-power { position: relative; width: 150px; height: 14px; margin-top: 5px; border-radius: 7px; background: rgba(255, 255, 255, 0.12); border: 1px solid var(--line); overflow: hidden; }
+.hud-side.right .hud-power { margin-left: auto; transform: scaleX(-1); }
+.hud-side.right .hud-power span { transform: scaleX(-1); }
+.hud-power i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff8a1e, #ffd23d); transition: width 0.25s ease; }
+.hud-power span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; letter-spacing: 1px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+.hud-power.ready { border-color: var(--gold); box-shadow: 0 0 14px rgba(255, 210, 61, 0.7); animation: powerPulse 0.8s ease-in-out infinite; }
+.hud-power.ready i { background: linear-gradient(90deg, #ff3d7f, #ffd23d, #fff); }
+@keyframes powerPulse { 50% { box-shadow: 0 0 26px rgba(255, 210, 61, 1); } }
 .hud-center { text-align: center; padding: 6px 22px; background: rgba(8, 14, 32, 0.7); border: 1px solid var(--line); border-radius: 14px; min-width: 190px; }
 .hud-score { font-family: var(--font-display); font-size: 42px; letter-spacing: 3px; line-height: 1; display: flex; justify-content: center; gap: 10px; }
 .hud-score .dash { color: var(--muted); }

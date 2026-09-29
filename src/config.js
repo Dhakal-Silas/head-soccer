@@ -4,9 +4,9 @@ export const FIELD = {
   halfWidth: 9,       // side walls at x = ±9 (the back of each net)
   ceiling: 6.5,
   goalX: 7.6,         // goal line / front posts at x = ±7.6
-  goalHeight: 2.2,
-  goalDepth: 1.5,     // half extent of the goal mouth along z (visual only)
-  postRadius: 0.08,
+  goalHeight: 2.8,
+  goalDepth: 1.9,      // half extent of the goal mouth along z (visual only)
+  postRadius: 0.1,
 };
 
 export const PHYS = {
@@ -23,14 +23,21 @@ export const PHYS = {
   playerAccel: 62,
   airControl: 0.55,
   kickDuration: 0.26,
-  kickWindow: [0.12, 0.72], // fraction of kick during which the foot can hit
+  kickWindow: [0.2, 0.75],  // fraction of kick during which the foot can hit
+  chordWindow: 0.09,        // seconds after one kick key in which the other makes a power shot
+  fireSpeed: 15,            // ball speed at which the fire trail appears
+  powerSpeed: 30,           // launch speed of a power shot
+  powerBallMax: 32,         // speed cap while the ball is on fire
 };
+
+// Power meter: fills with time and with every touch of the ball.
+export const POWER = { perSecond: 0.02, perKick: 0.12, perHeader: 0.08 };
 
 // ---- Player stat → physics mapping (stats are 1..5) ----
 export const statMap = {
   headRadius: (size) => 0.47 + (size - 1) * 0.035,
   maxSpeed: (speed) => 5.7 + speed * 0.6,
-  jumpVel: (jump) => 8.7 + jump * 0.5,
+  jumpVel: (jump) => 10 + jump * 0.55,
   kickPower: (power) => 10 + power * 0.85,
   headBounce: (control) => 0.82 - control * 0.04,
 };
@@ -99,16 +106,20 @@ export const ROSTER = [
 ];
 
 export const DIFFICULTIES = [
-  { level: 1, name: 'Rookie',  desc: 'Slow reactions, sloppy positioning.', reaction: 0.48, noise: 2.2, speed: 0.6, jumpP: 0.25, kickP: 0.4, idle: 0.35 },
-  { level: 2, name: 'Amateur', desc: 'Chases the ball but mistimes challenges.', reaction: 0.34, noise: 1.4, speed: 0.72, jumpP: 0.45, kickP: 0.6, idle: 0.18 },
-  { level: 3, name: 'Pro',     desc: 'Solid all round. A fair fight.', reaction: 0.22, noise: 0.85, speed: 0.85, jumpP: 0.65, kickP: 0.8, idle: 0.06 },
-  { level: 4, name: 'Star',    desc: 'Reads the ball early and punishes mistakes.', reaction: 0.13, noise: 0.42, speed: 0.95, jumpP: 0.85, kickP: 0.92, idle: 0.0 },
-  { level: 5, name: 'Legend',  desc: 'Near-perfect prediction. Good luck.', reaction: 0.08, noise: 0.15, speed: 1.0, jumpP: 0.95, kickP: 0.9, idle: 0.0 },
+  { level: 1, name: 'Rookie',  desc: 'Slow reactions, sloppy positioning.', reaction: 0.48, noise: 2.2, speed: 0.6, jumpP: 0.25, kickP: 0.4, idle: 0.35, powerP: 0.2 },
+  { level: 2, name: 'Amateur', desc: 'Chases the ball but mistimes challenges.', reaction: 0.34, noise: 1.4, speed: 0.72, jumpP: 0.45, kickP: 0.6, idle: 0.18, powerP: 0.4 },
+  { level: 3, name: 'Pro',     desc: 'Solid all round. A fair fight.', reaction: 0.22, noise: 0.85, speed: 0.85, jumpP: 0.65, kickP: 0.8, idle: 0.06, powerP: 0.6 },
+  { level: 4, name: 'Star',    desc: 'Reads the ball early and punishes mistakes.', reaction: 0.13, noise: 0.42, speed: 0.95, jumpP: 0.85, kickP: 0.92, idle: 0.0, powerP: 0.8 },
+  { level: 5, name: 'Legend',  desc: 'Near-perfect prediction. Good luck.', reaction: 0.08, noise: 0.15, speed: 1.0, jumpP: 0.95, kickP: 0.9, idle: 0.0, powerP: 0.95 },
 ];
 
 export const CONTROLS = [
-  { left: ['KeyA'], right: ['KeyD'], jump: ['KeyW'], kick: ['KeyS', 'KeyF', 'Space'] },
-  { left: ['ArrowLeft'], right: ['ArrowRight'], jump: ['ArrowUp'], kick: ['ArrowDown', 'Slash', 'Enter'] },
+  { left: ['KeyA'], right: ['KeyD'], jump: ['KeyW'], low: ['KeyG'], high: ['KeyH'] },
+  { left: ['ArrowLeft'], right: ['ArrowRight'], jump: ['ArrowUp'], low: ['Slash'], high: ['Period'] },
+];
+export const CONTROL_LABELS = [
+  { move: 'A / D', jump: 'W', low: 'G', high: 'H', power: 'G + H' },
+  { move: '← / →', jump: '↑', low: '/', high: '.', power: '/ + .' },
 ];
 
 export const TIME_OPTIONS = [1, 2, 3, 5];

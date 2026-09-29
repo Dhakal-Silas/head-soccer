@@ -1,7 +1,7 @@
 // Deterministic 2D simulation of a head-soccer match (rendered in 3D).
 // Everything lives in the x/y plane; the renderer adds depth.
 
-import { FIELD, PHYS, statMap } from './config.js';
+import { FIELD, PHYS, POWER, statMap } from './config.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -27,6 +27,9 @@ export function makePlayerState(roster, slot) {
     headBounce: statMap.headBounce(s.control),
     kickT: -1,                // -1 idle, else seconds since the kick started
     kickHit: false,
+    kickType: 'low',          // 'low' | 'high' | 'power'
+    power: 0,                 // 0..1 power-shot meter
+    stunT: 0,                 // seconds left unable to act after a power-shot hit
     jumpBuffer: 0,
     coyote: 0,
     lastHeadHit: 0,
@@ -34,7 +37,7 @@ export function makePlayerState(roster, slot) {
 }
 
 export function makeBallState() {
-  return { x: 0, y: 3.2, vx: 0, vy: 0, r: PHYS.ballRadius, spin: 0 };
+  return { x: 0, y: 3.2, vx: 0, vy: 0, r: PHYS.ballRadius, spin: 0, fire: false, fireSlot: -1, fireT: 0, fireBounces: 0 };
 }
 
 /**
@@ -112,7 +115,7 @@ export class Match {
       p.facing = p.slot === 0 ? 1 : -1; p.onGround = true; p.kickT = -1; p.kickHit = false;
     }
     const b = this.ball;
-    b.x = 0; b.y = 3.4; b.vx = 0; b.vy = 0; b.spin = 0;
+    b.x = 0; b.y = 3.4; b.vx = 0; b.vy = 0; b.spin = 0; b.fire = false;
   }
 
   timeLimit() { return this.settings.mode === 'time' ? this.settings.minutes * 60 : Infinity; }
@@ -237,7 +240,9 @@ export class Match {
   stepPlayers(commands, dt, live) {
     for (let i = 0; i < 2; i++) {
       const p = this.players[i];
-      const c = commands[i] || {};
+      let c = commands[i] || {};
+      if (p.stunT > 0) { p.stunT -= dt; c = {}; }
+      if (live) p.power = Math.min(1, p.power + POWER.perSecond * dt);
       const scale = c.speedScale || 1;
       const want = (c.right ? 1 : 0) - (c.left ? 1 : 0);
       const target = want * p.maxSpeed * scale;
@@ -269,12 +274,17 @@ export class Match {
         this.emit('jump', { slot: i });
       }
 
-      // kicking
-      if (live && c.kick && p.kickT < 0) {
+      // kicking: low / high, or a power shot when both keys are used together
+      const anyKick = c.kickLow || c.kickHigh || c.power;
+      if (live && anyKick && p.kickT < 0) {
         p.kickT = 0;
         p.kickHit = false;
+        p.kickType = c.power && p.power >= 1 ? 'power' : (c.kickHigh ? 'high' : 'low');
         this.stats.kicks[i]++;
         this.emit('swing', { slot: i });
+      } else if (live && anyKick && p.kickT >= 0 && p.kickT < PHYS.chordWindow && !p.kickHit) {
+        // second key pressed right after the first: upgrade to a power shot
+        if (p.power >= 1) p.kickType = 'power';
       }
       if (p.kickT >= 0) {
         p.kickT += dt;
@@ -370,11 +380,16 @@ export class Match {
   stepBall(dt, live) {
     const b = this.ball;
     const prevX = b.x, prevY = b.y;
+    if (b.fire) {
+      b.fireT += dt;
+      if (b.fireT > 3 || b.fireBounces >= 2 || Math.hypot(b.vx, b.vy) < 9) b.fire = false;
+    }
     b.vy -= PHYS.ballGravity * dt;
-    const drag = 1 - PHYS.ballAirDrag * dt;
+    const drag = 1 - (b.fire ? PHYS.ballAirDrag * 0.3 : PHYS.ballAirDrag) * dt;
     b.vx *= drag; b.vy *= drag;
+    const maxSp = b.fire ? PHYS.powerBallMax : PHYS.ballMaxSpeed;
     const sp = Math.hypot(b.vx, b.vy);
-    if (sp > PHYS.ballMaxSpeed) { b.vx *= PHYS.ballMaxSpeed / sp; b.vy *= PHYS.ballMaxSpeed / sp; }
+    if (sp > maxSp) { b.vx *= maxSp / sp; b.vy *= maxSp / sp; }
     b.x += b.vx * dt;
     b.y += b.vy * dt;
 
@@ -383,6 +398,7 @@ export class Match {
       b.y = b.r;
       if (b.vy < 0) {
         const impact = -b.vy;
+        if (b.fire && impact > 2) b.fireBounces++;
         b.vy = -b.vy * PHYS.ballBounce;
         if (impact > 2.5) this.emit('bounce', { x: b.x, strength: impact / 14 });
         if (Math.abs(b.vy) < 1.2) b.vy = 0;
@@ -410,8 +426,8 @@ export class Match {
     }
     // walls
     const W = FIELD.halfWidth - b.r;
-    if (b.x < -W) { b.x = -W; if (b.vx < 0) { b.vx = -b.vx * PHYS.wallBounce; this.emit('bounce', { x: b.x, strength: Math.abs(b.vx) / 14 }); } }
-    if (b.x > W) { b.x = W; if (b.vx > 0) { b.vx = -b.vx * PHYS.wallBounce; this.emit('bounce', { x: b.x, strength: Math.abs(b.vx) / 14 }); } }
+    if (b.x < -W) { b.x = -W; if (b.vx < 0) { b.vx = -b.vx * PHYS.wallBounce; if (b.fire) b.fireBounces++; this.emit('bounce', { x: b.x, strength: Math.abs(b.vx) / 14 }); } }
+    if (b.x > W) { b.x = W; if (b.vx > 0) { b.vx = -b.vx * PHYS.wallBounce; if (b.fire) b.fireBounces++; this.emit('bounce', { x: b.x, strength: Math.abs(b.vx) / 14 }); } }
 
     // posts (crossbar end points)
     for (const sgn of [-1, 1]) {
@@ -454,9 +470,23 @@ export class Match {
     const rvx = b.vx - p.vx, rvy = b.vy - p.vy;
     const vn = rvx * nx + rvy * ny;
     if (vn < 0) {
+      const oldVx = b.vx, oldVy = b.vy;
+      const hitByFire = b.fire && b.fireSlot !== p.slot && !b.fireKnocked;
       const j = -(1 + e) * vn;
       b.vx += j * nx;
       b.vy += j * ny;
+      if (hitByFire) {
+        // a power shot ploughs through and knocks the victim back
+        b.vx = b.vx * 0.4 + oldVx * 0.6;
+        b.vy = b.vy * 0.4 + oldVy * 0.6;
+        p.vx += Math.sign(oldVx || nx) * 7;
+        p.vy = Math.max(p.vy, 4.5);
+        p.onGround = false;
+        p.stunT = 0.6;
+        p.kickT = -1;
+        b.fireKnocked = true;
+        this.emit('knock', { slot: p.slot, x: p.x, y: p.y + p.headH });
+      }
       // headers get an extra push from the jump
       if (isHead && p.vy > 1) b.vy += p.vy * 0.25;
       // friction/spin transfer
@@ -469,6 +499,7 @@ export class Match {
       if (isHead && -vn > 2 && this.frame - p.lastHeadHit > 12) {
         p.lastHeadHit = this.frame;
         this.stats.headers[p.slot]++;
+        if (!hitByFire) this.gainPower(p, POWER.perHeader);
         this.emit('head', { slot: p.slot, strength, x: b.x, y: b.y });
       }
       return true;
@@ -478,13 +509,21 @@ export class Match {
 
   clampBall() {
     const b = this.ball;
+    const maxSp = b.fire ? PHYS.powerBallMax : PHYS.ballMaxSpeed;
     const sp = Math.hypot(b.vx, b.vy);
-    if (sp > PHYS.ballMaxSpeed) { b.vx *= PHYS.ballMaxSpeed / sp; b.vy *= PHYS.ballMaxSpeed / sp; }
+    if (sp > maxSp) { b.vx *= maxSp / sp; b.vy *= maxSp / sp; }
     const W = FIELD.halfWidth - b.r;
     if (b.x < -W) b.x = -W;
     if (b.x > W) b.x = W;
     if (b.y < b.r) b.y = b.r;
     if (b.y > FIELD.ceiling - b.r) b.y = FIELD.ceiling - b.r;
+  }
+
+  gainPower(p, amount) {
+    if (this.phase !== 'play') return;
+    const was = p.power;
+    p.power = Math.min(1, p.power + amount);
+    if (was < 1 && p.power >= 1) this.emit('powerReady', { slot: p.slot });
   }
 
   collideBallPlayer(p) {
@@ -517,18 +556,37 @@ export class Match {
     if ((b.x - p.x) * p.facing < -0.1) return;
     p.kickHit = true;
     const rel = clamp((b.y - (p.y + 0.3)) / 1.2, 0, 1); // 0 low ball, 1 high ball
-    const angle = (40 - 22 * rel) * Math.PI / 180;
-    const power = p.kickPower * (0.85 + 0.15 * Math.sin(Math.min(1, s / 0.5) * Math.PI / 2));
+    const type = p.kickType === 'power' && p.power >= 1 ? 'power' : p.kickType;
+    if (type === 'power') {
+      // aim at the far goal, just under the bar, and set the ball on fire
+      const goalX = p.facing * FIELD.goalX;
+      const dist = Math.max(1, Math.abs(goalX - b.x));
+      const targetY = FIELD.goalHeight * 0.45;
+      const aim = clamp(Math.atan2(targetY - b.y, dist), -8 * Math.PI / 180, 30 * Math.PI / 180);
+      b.vx = p.facing * PHYS.powerSpeed * Math.cos(aim);
+      b.vy = PHYS.powerSpeed * Math.sin(aim);
+      b.fire = true; b.fireSlot = p.slot; b.fireT = 0; b.fireBounces = 0; b.fireKnocked = false;
+      p.power = 0;
+      b.x = f.x + p.facing * 0.05;
+      this.clampBall();
+      this.emit('powershot', { slot: p.slot, x: f.x, y: f.y });
+      return;
+    }
+    const baseDeg = type === 'high' ? 56 - 16 * rel : 14 - 6 * rel;
+    const angle = baseDeg * Math.PI / 180;
+    const swing = 0.85 + 0.15 * Math.sin(Math.min(1, s / 0.5) * Math.PI / 2);
+    const power = p.kickPower * swing * (type === 'high' ? 1.0 : 1.08);
     b.vx = p.facing * power * Math.cos(angle) + p.vx * 0.3;
     b.vy = power * Math.sin(angle) + Math.max(0, p.vy) * 0.4;
     b.x = f.x + p.facing * 0.05;
     this.clampBall();
-    this.emit('kick', { slot: p.slot, power: power / 20, x: f.x, y: f.y });
+    this.gainPower(p, POWER.perKick);
+    this.emit('kick', { slot: p.slot, power: power / 20, x: f.x, y: f.y, kind: type });
   }
 
   checkGoal() {
     const b = this.ball;
-    if (b.y - b.r > FIELD.goalHeight) return;
+    if (b.y + b.r > FIELD.goalHeight + 0.02) return; // must pass fully under the bar
     let scorer = -1;
     if (b.x + b.r < -FIELD.goalX) scorer = 1;        // ball inside left goal → player 2 scores
     else if (b.x - b.r > FIELD.goalX) scorer = 0;    // inside right goal → player 1 scores

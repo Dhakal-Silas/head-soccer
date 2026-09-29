@@ -154,6 +154,16 @@ export class AudioSys {
     }
   }
 
+  power() {
+    this.burst({ dur: 0.6, vol: 0.6, freq: 500, q: 0.5 });
+    this.tone({ freq: 90, type: 'sawtooth', dur: 0.5, vol: 0.5, slide: 30 });
+    this.tone({ freq: 1200, type: 'square', dur: 0.25, vol: 0.12, slide: 200 });
+  }
+
+  ready() {
+    [880, 1320, 1760].forEach((f, i) => this.tone({ freq: f, type: 'triangle', dur: 0.18, vol: 0.14, delay: i * 0.08 }));
+  }
+
   fanfare() {
     const notes = [523, 659, 784, 1047, 784, 1047];
     notes.forEach((f, i) => this.tone({ freq: f, type: 'triangle', dur: 0.22, vol: 0.2, delay: i * 0.14 }));

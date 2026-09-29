@@ -1,7 +1,7 @@
 // DOM layer: screens, HUD, banners, setup/select/bracket/result rendering.
 // Emits high-level actions back to the controller through `on(action, fn)`.
 
-import { ROSTER, DIFFICULTIES, TIME_OPTIONS, GOAL_OPTIONS } from './config.js';
+import { ROSTER, DIFFICULTIES, TIME_OPTIONS, GOAL_OPTIONS, CONTROL_LABELS } from './config.js';
 import { portrait } from './faces.js';
 import { ROUND_NAMES } from './tournament.js';
 
@@ -59,6 +59,9 @@ export class UI {
   setHint(visible, twoPlayers) {
     $('#hint').classList.toggle('hidden', !visible);
     $('#hint-p2').style.display = twoPlayers ? '' : 'none';
+    const L = CONTROL_LABELS;
+    $('#hint-p1').innerHTML = `<b>P1</b> ${L[0].move} move · ${L[0].jump} jump · ${L[0].low} low kick · ${L[0].high} high kick · ${L[0].power} power shot`;
+    $('#hint-p2').innerHTML = `<b>P2</b> ${L[1].move} move · ${L[1].jump} jump · ${L[1].low} low kick · ${L[1].high} high kick · ${L[1].power} power shot`;
     if (visible) {
       $('#hint').style.opacity = '1';
       clearTimeout(this.hintTimer);
@@ -77,6 +80,12 @@ export class UI {
 
   updateHud(match) {
     for (let i = 0; i < 2; i++) {
+      const p = match.players[i];
+      const bar = $(`#hud-power-${i}`);
+      bar.querySelector('i').style.width = `${Math.round(p.power * 100)}%`;
+      const ready = p.power >= 1;
+      bar.classList.toggle('ready', ready);
+      bar.querySelector('span').textContent = ready ? `POWER READY · ${CONTROL_LABELS[i].power}` : 'POWER';
       const e = $(`#hud-score-${i}`);
       if (this.lastScore[i] !== match.score[i]) {
         e.textContent = match.score[i];

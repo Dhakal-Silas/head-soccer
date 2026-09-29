@@ -34,7 +34,7 @@ export class CpuBrain {
     const foe = match.players[1 - this.slot];
     const ball = match.ball;
     const cfg = this.cfg;
-    const cmd = { left: false, right: false, jump: false, kick: false, speedScale: cfg.speed };
+    const cmd = { left: false, right: false, jump: false, kickLow: false, kickHigh: false, power: false, speedScale: cfg.speed };
     if (match.phase !== 'play') return cmd;
 
     this.kickCooldown -= dt;
@@ -134,18 +134,28 @@ export class CpuBrain {
     // kick: only when the kick would travel away from our own goal,
     // unless the ball is far enough from it to be safe
     const safeToKick = me.facing === dir || Math.abs(ball.x - ownGoalX) > 3.5;
+    const foeAhead = (foe.x - me.x) * dir;
+    const goalDist = Math.abs(dir * FIELD.goalX - me.x);
+    // lob when the opponent stands in the way, drive it low otherwise
+    const chooseKick = () => {
+      if (me.power >= 1 && me.facing === dir && goalDist < 8.5 && Math.random() < cfg.powerP) {
+        cmd.kickLow = true; cmd.power = true; return;
+      }
+      const lob = (foeAhead > 0.6 && foeAhead < 3.2 && foe.onGround) || goalDist > 7;
+      if (lob) cmd.kickHigh = true; else cmd.kickLow = true;
+    };
     if (this.wantKick && this.kickCooldown <= 0 && safeToKick) {
       const inFront = dxBall > -0.05 && dxBall < 1.25;
       const heightOk = ball.y > me.y - 0.1 && ball.y < me.y + 1.5;
       if (inFront && heightOk) {
-        cmd.kick = true;
+        chooseKick();
         this.kickCooldown = 0.35 + (5 - cfg.level) * 0.08;
         this.wantKick = false;
       }
     }
     // emergency clearance right in front of our goal (facing away from it)
-    if (this.kickCooldown <= 0 && me.facing === dir && Math.abs(me.x - ownGoalX) < 2.4 && dxBall > -0.1 && dxBall < 1.2 && ball.y < me.y + 1.4 && Math.random() < cfg.kickP) {
-      cmd.kick = true;
+    if (!cmd.kickLow && !cmd.kickHigh && this.kickCooldown <= 0 && me.facing === dir && Math.abs(me.x - ownGoalX) < 2.4 && dxBall > -0.1 && dxBall < 1.2 && ball.y < me.y + 1.4 && Math.random() < cfg.kickP) {
+      cmd.kickHigh = true;
       this.kickCooldown = 0.3;
     }
 

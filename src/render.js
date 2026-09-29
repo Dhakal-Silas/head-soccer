@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { buildStadium } from './stadium.js';
 import { Avatar } from './avatar.js';
-import { Confetti, Dust } from './effects.js';
+import { Confetti, Dust, Trail } from './effects.js';
 import { PHYS } from './config.js';
 
 function ballTexture() {
@@ -55,8 +55,11 @@ export class GameRenderer {
     this.stadium = buildStadium(this.scene);
     this.confetti = new Confetti(this.scene);
     this.dust = new Dust(this.scene);
+    this.trail = new Trail(this.scene);
 
-    const ballMat = new THREE.MeshStandardMaterial({ map: ballTexture(), roughness: 0.45, metalness: 0.05 });
+    const ballMat = new THREE.MeshStandardMaterial({ map: ballTexture(), roughness: 0.45, metalness: 0.05, emissive: '#ff6a00', emissiveIntensity: 0 });
+    this.ballMat = ballMat;
+    this.glow = 0;
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(PHYS.ballRadius, 32, 24), ballMat);
     this.ball.castShadow = true;
     this.scene.add(this.ball);
@@ -84,6 +87,7 @@ export class GameRenderer {
   setPlayers(rosters) {
     this.confetti.clear();
     this.dust.clear();
+    this.trail.clear();
     this.shake = 0;
     for (let i = 0; i < 2; i++) {
       if (this.avatars[i]) { this.scene.remove(this.avatars[i].root); this.avatars[i].dispose(); }
@@ -121,6 +125,16 @@ export class GameRenderer {
       case 'end':
         if (ev.winner >= 0) this.confetti.burst(this.avatars[ev.winner].root.position.x, 3, 260, 1.4);
         break;
+      case 'powershot':
+        this.shake = 0.45;
+        this.trail.emit(ev.x, ev.y, 0, 0, 30, 1.2);
+        this.dust.puff(ev.x, Math.max(0, ev.y - 0.4), 10, 1.4);
+        break;
+      case 'knock':
+        this.shake = Math.max(this.shake, 0.3);
+        this.trail.emit(ev.x, ev.y, 0, 0, 16, 1);
+        this.avatars[ev.slot].bonk();
+        break;
     }
   }
 
@@ -137,6 +151,13 @@ export class GameRenderer {
     }
     this.confetti.update(dt);
     this.dust.update(dt);
+    // fire trail on fast balls / power shots
+    const speed = Math.hypot(b.vx, b.vy);
+    const heat = b.fire ? 1 : THREE.MathUtils.clamp((speed - PHYS.fireSpeed) / 8, 0, 0.8);
+    if (heat > 0 && match.phase !== 'countdown') this.trail.emit(b.x, b.y, b.vx, b.vy, b.fire ? 5 : 2, heat);
+    this.trail.update(dt);
+    this.glow += ((b.fire ? 1.6 : heat * 0.8) - this.glow) * Math.min(1, dt * 8);
+    this.ballMat.emissiveIntensity = this.glow;
 
     // crowd wobble after a goal
     if (this.crowdWave > 0) {

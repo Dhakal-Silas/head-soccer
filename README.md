@@ -20,10 +20,16 @@ Then open the URL Vite prints (usually http://localhost:5173).
 | ------ | -------- | -------- |
 | Move   | A / D    | ← / →    |
 | Jump   | W        | ↑        |
-| Kick   | S, F or Space | ↓, / or Enter |
+| Low kick (flat) | G | / |
+| High kick (lob) | H | . |
+| Power shot (meter full) | G + H | / + . |
 | Pause  | Esc or P | Esc or P |
 
-On the player-select screen the same keys browse the roster, Enter starts.
+On the player-select screen A/D/W/S and the arrow keys browse the roster, Enter starts.
+
+Every touch of the ball (and time) charges a player's power meter. When it is
+full, pressing both kick keys together fires a blazing shot that flies faster
+than any normal kick and knocks the opponent back if it hits them.
 
 ## Features
 

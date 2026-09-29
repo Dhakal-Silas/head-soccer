@@ -195,6 +195,18 @@ function handleEvents() {
       case 'drop':
         if (live) { audio.whistle(); ui.banner('DROP BALL', 'ball was stuck', '', 1400); }
         break;
+      case 'powershot':
+        setMood(ev.slot, 'angry', 1.2);
+        setMood(1 - ev.slot, 'shock', 1.2);
+        if (live) { audio.power(); ui.banner('POWER SHOT!', m.players[ev.slot].roster.name, 'golden', 1000); }
+        break;
+      case 'knock':
+        setMood(ev.slot, 'shock', 1.2);
+        if (live) audio.head(1);
+        break;
+      case 'powerReady':
+        if (live && app.humans[ev.slot]) audio.ready();
+        break;
     }
   }
 }

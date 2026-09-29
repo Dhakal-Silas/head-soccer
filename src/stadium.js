@@ -123,7 +123,10 @@ export function buildStadium(scene) {
   ground.receiveShadow = true;
   group.add(ground);
 
-  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(FIELD.halfWidth * 2 + 6, 13), new THREE.MeshStandardMaterial({ map: pitchTexture(), roughness: 0.95 }));
+  // the painted goal line sits exactly on the front posts (x = ±goalX)
+  const lineFrac = 1 - 60 / 1024; // margin used in pitchTexture()
+  const pitchW = (FIELD.goalX * 2) / lineFrac;
+  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(pitchW, pitchW / 2), new THREE.MeshStandardMaterial({ map: pitchTexture(), roughness: 0.95 }));
   pitch.rotation.x = -Math.PI / 2;
   pitch.receiveShadow = true;
   group.add(pitch);

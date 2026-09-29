@@ -48,11 +48,16 @@ export class Input {
   /** Build the per-step command object for a human player slot (0 or 1). */
   commandFor(slot) {
     const m = CONTROLS[slot];
+    const low = this.consumePress(m.low);
+    const high = this.consumePress(m.high);
     return {
       left: this.isDown(m.left),
       right: this.isDown(m.right),
       jump: this.isDown(m.jump) || this.consumePress(m.jump),
-      kick: this.consumePress(m.kick),
+      kickLow: low,
+      kickHigh: high,
+      // both kick keys together = power shot (if the meter is full)
+      power: (low || high) && this.isDown(m.low) && this.isDown(m.high),
       speedScale: 1,
     };
   }

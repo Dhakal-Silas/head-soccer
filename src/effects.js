@@ -137,3 +137,67 @@ export class Dust {
     if (any) this.mesh.instanceMatrix.needsUpdate = true;
   }
 }
+
+/** Fire trail behind a fast or power-shot ball. */
+export class Trail {
+  constructor(scene, count = 160) {
+    this.count = count;
+    const geo = new THREE.SphereGeometry(0.16, 8, 6);
+    const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.mesh = new THREE.InstancedMesh(geo, mat, count);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.parts = new Array(count).fill(null).map(() => ({ alive: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 1 }));
+    const c = new THREE.Color(0, 0, 0);
+    for (let i = 0; i < count; i++) { _m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, _m); this.mesh.setColorAt(i, c); }
+    this.mesh.instanceColor.needsUpdate = true;
+    scene.add(this.mesh);
+    this.next = 0;
+    this.color = new THREE.Color();
+    this.hot = new THREE.Color('#fff3b0');
+    this.mid = new THREE.Color('#ff8a1e');
+    this.cold = new THREE.Color('#c81e10');
+  }
+
+  clear() {
+    for (let i = 0; i < this.count; i++) { this.parts[i].alive = false; _m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, _m); }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Emit n flames at (x, y); intensity 0..1 scales size and life. */
+  emit(x, y, vx, vy, n = 3, intensity = 1) {
+    for (let k = 0; k < n; k++) {
+      const p = this.parts[this.next];
+      this.next = (this.next + 1) % this.count;
+      p.alive = true;
+      p.x = x + (Math.random() - 0.5) * 0.25; p.y = y + (Math.random() - 0.5) * 0.25; p.z = (Math.random() - 0.5) * 0.25;
+      // drift back along the ball's path and slightly up
+      p.vx = -vx * 0.15 + (Math.random() - 0.5) * 1.2;
+      p.vy = -vy * 0.15 + 1.5 + Math.random() * 1.5;
+      p.vz = (Math.random() - 0.5) * 1.2;
+      p.max = p.life = 0.22 + Math.random() * 0.25 * intensity;
+      p.size = 0.7 + intensity * 0.9;
+    }
+  }
+
+  update(dt) {
+    let any = false;
+    for (let i = 0; i < this.count; i++) {
+      const p = this.parts[i];
+      if (!p.alive) continue;
+      any = true;
+      p.life -= dt;
+      if (p.life <= 0) { p.alive = false; _m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, _m); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      const t = p.life / p.max; // 1 fresh → 0 dead
+      const s = p.size * (0.35 + 0.65 * t);
+      _p.set(p.x, p.y, p.z); _q.identity(); _s.set(s, s, s);
+      _m.compose(_p, _q, _s);
+      this.mesh.setMatrixAt(i, _m);
+      if (t > 0.6) this.color.lerpColors(this.mid, this.hot, (t - 0.6) / 0.4);
+      else this.color.lerpColors(this.cold, this.mid, t / 0.6);
+      this.mesh.setColorAt(i, this.color);
+    }
+    if (any) { this.mesh.instanceMatrix.needsUpdate = true; this.mesh.instanceColor.needsUpdate = true; }
+  }
+}

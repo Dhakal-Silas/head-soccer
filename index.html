@@ -20,6 +20,7 @@
         <div class="hud-meta">
           <div class="hud-name" id="hud-name-0">P1</div>
           <div class="hud-tag" id="hud-tag-0">Player 1</div>
+          <div class="hud-power" id="hud-power-0"><i></i><span>POWER</span></div>
         </div>
       </div>
       <div class="hud-center">
@@ -31,6 +32,7 @@
         <div class="hud-meta">
           <div class="hud-name" id="hud-name-1">P2</div>
           <div class="hud-tag" id="hud-tag-1">CPU</div>
+          <div class="hud-power" id="hud-power-1"><i></i><span>POWER</span></div>
         </div>
         <img class="hud-portrait" id="hud-portrait-1" alt="" />
       </div>
@@ -43,8 +45,8 @@
     </div>
 
     <div id="hint" class="hidden">
-      <span><b>P1</b> A / D move · W jump · S kick</span>
-      <span id="hint-p2"><b>P2</b> ← / → move · ↑ jump · ↓ kick</span>
+      <span id="hint-p1"></span>
+      <span id="hint-p2"></span>
     </div>
 
     <!-- ================= TITLE ================= -->
@@ -133,16 +135,18 @@
             <h3>Player 1</h3>
             <p><kbd>A</kbd> <kbd>D</kbd> move</p>
             <p><kbd>W</kbd> jump</p>
-            <p><kbd>S</kbd> / <kbd>F</kbd> / <kbd>Space</kbd> kick</p>
+            <p><kbd>G</kbd> low kick · <kbd>H</kbd> high kick</p>
+            <p><kbd>G</kbd> + <kbd>H</kbd> power shot</p>
           </div>
           <div>
             <h3>Player 2</h3>
             <p><kbd>←</kbd> <kbd>→</kbd> move</p>
             <p><kbd>↑</kbd> jump</p>
-            <p><kbd>↓</kbd> / <kbd>/</kbd> / <kbd>Enter</kbd> kick</p>
+            <p><kbd>/</kbd> low kick · <kbd>.</kbd> high kick</p>
+            <p><kbd>/</kbd> + <kbd>.</kbd> power shot</p>
           </div>
         </div>
-        <p class="muted">Head the ball, jump on your rival, kick from the ground or in the air. <kbd>Esc</kbd> pauses. Each star has different speed, jump, power, head size and ball control.</p>
+        <p class="muted">Low kicks drive the ball flat, high kicks lob it over your rival. Every touch of the ball charges your <b>power meter</b>; when it is full, press both kick keys together for a blazing power shot that knocks the opponent flying. <kbd>Esc</kbd> pauses.</p>
         <button class="btn primary" data-action="closeHelp">Got it</button>
       </div>
     </section>
