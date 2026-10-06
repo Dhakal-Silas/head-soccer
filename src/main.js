@@ -36,6 +36,9 @@ const app = {
   accumulator: 0,
   last: performance.now(),
   clock: 0,
+  slowmo: 0,
+  streak: [0, 0],
+  lastWarnSec: -1,
 };
 
 const diffName = () => DIFFICULTIES[app.settings.difficulty - 1].name;
@@ -74,6 +77,9 @@ function startMatch(params) {
   app.resultShown = false;
   app.lastCount = null;
   app.accumulator = 0;
+  app.slowmo = 0;
+  app.streak = [0, 0];
+  app.lastWarnSec = -1;
   input.reset();
   renderer.setPlayers(rosters);
   renderer.menuOrbit = false;
@@ -143,9 +149,19 @@ function handleEvents() {
         setMood(c, diff <= -3 ? 'angry' : 'sad', 3.5);
         renderer.avatars[s].setCelebrate('win');
         renderer.avatars[c].setCelebrate('lose');
+        app.streak[s]++; app.streak[c] = 0;
         if (live) {
           audio.goal();
-          const sub = m.overtime ? 'Golden goal!' : `${name} scores`;
+          app.slowmo = 0.9;
+          let sub = `${name} scores`;
+          const n = app.streak[s];
+          if (m.overtime) sub = `Golden goal · ${name}!`;
+          else if (m.settings.mode === 'time' && m.timeLeft() < 10) sub = `Late drama! ${name}`;
+          else if (m.score[s] === m.score[c]) sub = `${name} equalises!`;
+          else if (n >= 4) sub = `${name} is unstoppable! ${n} in a row`;
+          else if (n === 3) sub = `Hat-trick! ${name}`;
+          else if (n === 2) sub = `${name} · two in a row`;
+          else if (m.score[s] - m.score[c] === 1 && m.score[c] > 0) sub = `${name} takes the lead!`;
           ui.banner('GOAL!', sub, 'goal', 2200);
         }
         break;
@@ -208,6 +224,17 @@ function handleEvents() {
         if (live && app.humans[ev.slot]) audio.ready();
         break;
     }
+  }
+}
+
+function updateTension() {
+  const m = app.match;
+  if (app.demo || m.settings.mode !== 'time' || m.overtime || m.phase !== 'play') return;
+  const left = Math.ceil(m.timeLeft());
+  if (left <= 10 && left !== app.lastWarnSec && left > 0) {
+    app.lastWarnSec = left;
+    if (left === 10) ui.banner('10 SECONDS', 'make it count', 'golden', 1200);
+    if (left <= 5) audio.countdown(left === 1);
   }
 }
 
@@ -438,7 +465,10 @@ function frame(now) {
   const m = app.match;
   if (m && !app.paused) {
     app.clock += dt;
-    app.accumulator += dt;
+    // slow motion right after a goal (wall-clock controlled)
+    let simDt = dt;
+    if (app.slowmo > 0) { app.slowmo -= dt; simDt = dt * 0.3; }
+    app.accumulator += simDt;
     let steps = 0;
     while (app.accumulator >= PHYS.dt && steps < 8) {
       const commands = [0, 1].map((i) => (app.humans[i] ? input.commandFor(i) : app.brains[i].decide(m, PHYS.dt)));
@@ -448,6 +478,7 @@ function frame(now) {
     }
     handleEvents();
     updateCountdown();
+    updateTension();
     updateMoods();
     if (!app.demo) {
       ui.updateHud(m);
@@ -456,7 +487,7 @@ function frame(now) {
         if (app.resultTimer <= 0 && !app.resultShown) showResult();
       }
     }
-    renderer.update(m, dt);
+    renderer.update(m, app.slowmo > 0 ? dt * 0.3 : dt);
   } else if (m) {
     renderer.update(m, 0);
   }

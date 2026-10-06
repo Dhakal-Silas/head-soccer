@@ -26,18 +26,22 @@ export function skyTexture() {
   });
 }
 
+// Two mowing stripes that tile across the whole ground.
+function grassTexture() {
+  return canvasTexture(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#37a046'; ctx.fillRect(0, 0, w / 2, h);
+    ctx.fillStyle = '#2f8f3c'; ctx.fillRect(w / 2, 0, w / 2, h);
+    for (let i = 0; i < 900; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`;
+      ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+    }
+  }, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, anisotropy: 8 });
+}
+
+// Only the white markings, on a transparent texture laid over the grass.
 function pitchTexture() {
   return canvasTexture(2048, 1024, (ctx, w, h) => {
-    const stripes = 12;
-    for (let i = 0; i < stripes; i++) {
-      ctx.fillStyle = i % 2 ? '#2f8f3c' : '#37a046';
-      ctx.fillRect((i * w) / stripes, 0, w / stripes + 1, h);
-    }
-    // grain
-    for (let i = 0; i < 6000; i++) {
-      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`;
-      ctx.fillRect(Math.random() * w, Math.random() * h, 3, 3);
-    }
+    ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = 'rgba(255,255,255,0.92)';
     ctx.lineWidth = 8;
     const m = 60; // margin
@@ -115,19 +119,25 @@ export function buildStadium(scene) {
   const group = new THREE.Group();
   scene.add(group);
 
-  // ---- ground and pitch
-  const groundMat = new THREE.MeshStandardMaterial({ color: '#2a7a34', roughness: 1 });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 90), groundMat);
+  // ---- ground: mowing stripes that cover the whole visible floor
+  const lineFrac = 1 - 60 / 1024; // margin used in pitchTexture()
+  const pitchW = (FIELD.goalX * 2) / lineFrac;   // painted goal line sits on the front posts
+  const stripeW = pitchW / 12;
+  const GW = 160, GD = 100;
+  const grass = grassTexture();
+  const repeatX = GW / (2 * stripeW);
+  grass.repeat.set(repeatX, GD / (2 * stripeW));
+  // keep a stripe boundary exactly at x = 0 so the halfway line splits two stripes
+  grass.offset.x = Math.ceil(repeatX / 2) - repeatX / 2;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshStandardMaterial({ map: grass, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.02;
+  ground.position.set(0, -0.01, 10);
   ground.receiveShadow = true;
   group.add(ground);
 
-  // the painted goal line sits exactly on the front posts (x = ±goalX)
-  const lineFrac = 1 - 60 / 1024; // margin used in pitchTexture()
-  const pitchW = (FIELD.goalX * 2) / lineFrac;
-  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(pitchW, pitchW / 2), new THREE.MeshStandardMaterial({ map: pitchTexture(), roughness: 0.95 }));
+  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(pitchW, pitchW / 2), new THREE.MeshStandardMaterial({ map: pitchTexture(), transparent: true, roughness: 0.95, depthWrite: false }));
   pitch.rotation.x = -Math.PI / 2;
+  pitch.position.y = 0.005;
   pitch.receiveShadow = true;
   group.add(pitch);
 

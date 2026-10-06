@@ -37,7 +37,7 @@ export function makePlayerState(roster, slot) {
 }
 
 export function makeBallState() {
-  return { x: 0, y: 3.2, vx: 0, vy: 0, r: PHYS.ballRadius, spin: 0, fire: false, fireSlot: -1, fireT: 0, fireBounces: 0 };
+  return { x: 0, y: 3.2, vx: 0, vy: 0, r: PHYS.ballRadius, spin: 0, fire: false, fireSlot: -1, fireT: 0, fireBounces: 0, kickT: 9, kickSlot: -1 };
 }
 
 /**
@@ -166,10 +166,22 @@ export class Match {
     // alternate the processing order every step so neither slot gets the
     // "last write wins" advantage when both touch the ball at once
     const order = this.frame % 2 === 0 ? [0, 1] : [1, 0];
+    let touched = 0;
     for (const i of order) {
       const p = this.players[i];
-      this.collideBallPlayer(p);
+      if (this.collideBallPlayer(p)) touched++;
       this.kickCheck(p);
+    }
+    // sandwiched between both players: the ball squirts upwards instead of
+    // being carried along into the net
+    if (touched === 2) {
+      const b = this.ball;
+      if (b.vy < 6 && this.frame - (this.lastSqueeze || -999) > 20) {
+        this.lastSqueeze = this.frame;
+        b.vy = 9;
+        b.vx = -Math.sign(b.x || 1) * 4 + (Math.random() - 0.5) * 4;
+        this.emit('squeeze', { x: b.x, y: b.y });
+      }
     }
     this.clampBall();
     this.checkGoal();
@@ -384,6 +396,7 @@ export class Match {
       b.fireT += dt;
       if (b.fireT > 3 || b.fireBounces >= 2 || Math.hypot(b.vx, b.vy) < 9) b.fire = false;
     }
+    b.kickT += dt;
     b.vy -= PHYS.ballGravity * dt;
     const drag = 1 - (b.fire ? PHYS.ballAirDrag * 0.3 : PHYS.ballAirDrag) * dt;
     b.vx *= drag; b.vy *= drag;
@@ -457,6 +470,18 @@ export class Match {
     const minD = cr + b.r;
     if (d >= minD || d < 1e-6) return false;
     const nx = dx / d, ny = dy / d;
+    // a freshly kicked ball flies through a blocking opponent: the first
+    // contact shoves them aside, then the ball ignores them for a moment
+    if (!b.fire && b.kickT < PHYS.plowTime && b.kickSlot >= 0 && b.kickSlot !== p.slot) {
+      if (!b.plowed) {
+        b.plowed = true;
+        p.vx += Math.sign(b.vx || nx) * 6;
+        p.stunT = Math.max(p.stunT, 0.15);
+        p.kickT = -1;
+        this.emit('shove', { slot: p.slot, x: b.x, y: b.y });
+      }
+      return false;
+    }
     b.x = cx + nx * minD;
     b.y = cy + ny * minD;
     // never push the ball into the ground: squeeze it out sideways instead
@@ -527,8 +552,9 @@ export class Match {
   }
 
   collideBallPlayer(p) {
-    this.collideCircle(p, p.x, p.y + p.headH, p.headR, p.headBounce, true);
-    this.collideCircle(p, p.x, p.y + p.bodyH, p.bodyR, 0.55, false);
+    const a = this.collideCircle(p, p.x, p.y + p.headH, p.headR, p.headBounce, true);
+    const c = this.collideCircle(p, p.x, p.y + p.bodyH, p.bodyR, 0.55, false);
+    return a || c;
   }
 
   /** Foot position during a kick, for both the hit test and the renderer. */
@@ -572,13 +598,18 @@ export class Match {
       this.emit('powershot', { slot: p.slot, x: f.x, y: f.y });
       return;
     }
-    const baseDeg = type === 'high' ? 56 - 16 * rel : 14 - 6 * rel;
+    let baseDeg = type === 'high' ? 50 - 14 * rel : 14 - 6 * rel;
+    // opponent standing right in the way of a low kick → chip it over them
+    const foe = this.players[1 - p.slot];
+    const foeAhead = (foe.x - b.x) * p.facing;
+    if (type === 'low' && foeAhead > 0 && foeAhead < 1.1 && Math.abs(foe.y - p.y) < 0.8) baseDeg = 48;
     const angle = baseDeg * Math.PI / 180;
     const swing = 0.85 + 0.15 * Math.sin(Math.min(1, s / 0.5) * Math.PI / 2);
-    const power = p.kickPower * swing * (type === 'high' ? 1.0 : 1.08);
+    const power = p.kickPower * swing * (type === 'high' ? 1.12 : 1.08);
     b.vx = p.facing * power * Math.cos(angle) + p.vx * 0.3;
     b.vy = power * Math.sin(angle) + Math.max(0, p.vy) * 0.4;
     b.x = f.x + p.facing * 0.05;
+    b.kickT = 0; b.kickSlot = p.slot; b.plowed = false;
     this.clampBall();
     this.gainPower(p, POWER.perKick);
     this.emit('kick', { slot: p.slot, power: power / 20, x: f.x, y: f.y, kind: type });

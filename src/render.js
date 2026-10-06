@@ -130,6 +130,13 @@ export class GameRenderer {
         this.trail.emit(ev.x, ev.y, 0, 0, 30, 1.2);
         this.dust.puff(ev.x, Math.max(0, ev.y - 0.4), 10, 1.4);
         break;
+      case 'shove':
+        this.dust.puff(ev.x, Math.max(0, ev.y - 0.3), 8, 1.1);
+        this.shake = Math.max(this.shake, 0.12);
+        break;
+      case 'squeeze':
+        this.dust.puff(ev.x, Math.max(0, ev.y - 0.3), 5, 0.8);
+        break;
       case 'knock':
         this.shake = Math.max(this.shake, 0.3);
         this.trail.emit(ev.x, ev.y, 0, 0, 16, 1);
@@ -176,11 +183,21 @@ export class GameRenderer {
     } else {
       const px = (match.players[0].x + match.players[1].x) / 2;
       const focusX = b.x * 0.6 + px * 0.4;
-      tx = THREE.MathUtils.clamp(focusX * 0.22, -2.2, 2.2);
-      ty = this.camBase.y + THREE.MathUtils.clamp(b.y * 0.06, 0, 0.5);
-      tz = this.camBase.z * this.zoom;
-      lx = THREE.MathUtils.clamp(focusX * 0.3, -2.5, 2.5);
-      ly = 2.1 + THREE.MathUtils.clamp(b.y * 0.08, 0, 0.5);
+      const goalCam = match.phase === 'goal' && match.phaseT < 1.6;
+      if (goalCam) {
+        // punch in on the net for the replay feel
+        tx = THREE.MathUtils.clamp(b.x * 0.55, -4.5, 4.5);
+        ty = this.camBase.y * 0.6;
+        tz = this.camBase.z * 0.62;
+        lx = THREE.MathUtils.clamp(b.x * 0.75, -6.5, 6.5);
+        ly = 1.6;
+      } else {
+        tx = THREE.MathUtils.clamp(focusX * 0.22, -2.2, 2.2);
+        ty = this.camBase.y + THREE.MathUtils.clamp(b.y * 0.06, 0, 0.5);
+        tz = this.camBase.z * this.zoom;
+        lx = THREE.MathUtils.clamp(focusX * 0.3, -2.5, 2.5);
+        ly = 2.1 + THREE.MathUtils.clamp(b.y * 0.08, 0, 0.5);
+      }
     }
     const k = 1 - Math.exp(-dt * (this.menuOrbit ? 1.5 : 4));
     this.camPos.x += (tx - this.camPos.x) * k;

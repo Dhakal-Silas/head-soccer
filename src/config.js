@@ -16,8 +16,8 @@ export const PHYS = {
   ballRadius: 0.34,
   ballBounce: 0.72,
   wallBounce: 0.8,
-  ballMaxSpeed: 20,
-  ballAirDrag: 0.2,     // fraction of velocity lost per second in the air
+  ballMaxSpeed: 27,
+  ballAirDrag: 0.1,     // fraction of velocity lost per second in the air
   ballRollFriction: 2.4, // m/s² deceleration while rolling
   playerFriction: 14,   // ground deceleration when no input
   playerAccel: 62,
@@ -25,9 +25,10 @@ export const PHYS = {
   kickDuration: 0.26,
   kickWindow: [0.2, 0.75],  // fraction of kick during which the foot can hit
   chordWindow: 0.09,        // seconds after one kick key in which the other makes a power shot
-  fireSpeed: 15,            // ball speed at which the fire trail appears
-  powerSpeed: 30,           // launch speed of a power shot
-  powerBallMax: 32,         // speed cap while the ball is on fire
+  fireSpeed: 20,            // ball speed at which the fire trail appears
+  powerSpeed: 36,           // launch speed of a power shot
+  powerBallMax: 38,         // speed cap while the ball is on fire
+  plowTime: 0.15,           // seconds after a kick during which the ball shoves a blocking opponent
 };
 
 // Power meter: fills with time and with every touch of the ball.
@@ -36,10 +37,10 @@ export const POWER = { perSecond: 0.02, perKick: 0.12, perHeader: 0.08 };
 // ---- Player stat → physics mapping (stats are 1..5) ----
 export const statMap = {
   headRadius: (size) => 0.47 + (size - 1) * 0.035,
-  maxSpeed: (speed) => 5.7 + speed * 0.6,
+  maxSpeed: (speed) => 6.4 + speed * 0.65,
   jumpVel: (jump) => 10 + jump * 0.55,
-  kickPower: (power) => 10 + power * 0.85,
-  headBounce: (control) => 0.82 - control * 0.04,
+  kickPower: (power) => 14 + power * 1.1,
+  headBounce: (control) => 0.9 - control * 0.04,
 };
 
 export const ROSTER = [
@@ -106,10 +107,10 @@ export const ROSTER = [
 ];
 
 export const DIFFICULTIES = [
-  { level: 1, name: 'Rookie',  desc: 'Slow reactions, sloppy positioning.', reaction: 0.48, noise: 2.2, speed: 0.6, jumpP: 0.25, kickP: 0.4, idle: 0.35, powerP: 0.2 },
-  { level: 2, name: 'Amateur', desc: 'Chases the ball but mistimes challenges.', reaction: 0.34, noise: 1.4, speed: 0.72, jumpP: 0.45, kickP: 0.6, idle: 0.18, powerP: 0.4 },
-  { level: 3, name: 'Pro',     desc: 'Solid all round. A fair fight.', reaction: 0.22, noise: 0.85, speed: 0.85, jumpP: 0.65, kickP: 0.8, idle: 0.06, powerP: 0.6 },
-  { level: 4, name: 'Star',    desc: 'Reads the ball early and punishes mistakes.', reaction: 0.13, noise: 0.42, speed: 0.95, jumpP: 0.85, kickP: 0.92, idle: 0.0, powerP: 0.8 },
+  { level: 1, name: 'Rookie',  desc: 'Slow reactions, sloppy positioning.', reaction: 0.5, noise: 2.4, speed: 0.52, jumpP: 0.15, kickP: 0.35, idle: 0.4, powerP: 0.15 },
+  { level: 2, name: 'Amateur', desc: 'Chases the ball but mistimes challenges.', reaction: 0.34, noise: 1.5, speed: 0.66, jumpP: 0.4, kickP: 0.55, idle: 0.2, powerP: 0.35 },
+  { level: 3, name: 'Pro',     desc: 'Solid all round. A fair fight.', reaction: 0.22, noise: 0.85, speed: 0.8, jumpP: 0.65, kickP: 0.8, idle: 0.06, powerP: 0.6 },
+  { level: 4, name: 'Star',    desc: 'Reads the ball early and punishes mistakes.', reaction: 0.12, noise: 0.4, speed: 0.93, jumpP: 0.88, kickP: 0.92, idle: 0.0, powerP: 0.8 },
   { level: 5, name: 'Legend',  desc: 'Near-perfect prediction. Good luck.', reaction: 0.08, noise: 0.15, speed: 1.0, jumpP: 0.95, kickP: 0.9, idle: 0.0, powerP: 0.95 },
 ];
 
